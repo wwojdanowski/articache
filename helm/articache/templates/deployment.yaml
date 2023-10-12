@@ -1,10 +1,13 @@
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: {{ include "articache.fullname" . }}
   labels:
     {{- include "articache.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "articache.selectorLabels" . | nindent 6 }}
@@ -15,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-         {{- include "articache.labels" . | nindent 8 }}
+        {{- include "articache.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -32,15 +35,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.container.port }}
+              containerPort: 8080
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /
               port: http
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /
               port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

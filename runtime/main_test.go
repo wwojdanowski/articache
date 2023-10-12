@@ -47,8 +47,6 @@ func (t *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 }
 
-var ap = ArtifactProvider{}
-
 func setup() string {
 	rootDir, err := ioutil.TempDir("/tmp", "articache_test_dir")
 
@@ -70,8 +68,8 @@ func setup() string {
 
 	file.WriteString("This is a test file")
 
-	ap.CachePath = rootDir
-	ap.HttpClient = &http.Client{Transport: &MockTransport{}}
+	cachePath = rootDir
+	httpClient = &http.Client{Transport: &MockTransport{}}
 	return rootDir
 
 }
@@ -99,7 +97,7 @@ func TestErrorRedirectsToMavenCentral(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(ap.HandleArtifactRequest)
+	handler := http.HandlerFunc(HandleArtifactRequest)
 
 	handler.ServeHTTP(rr, req)
 
@@ -125,7 +123,7 @@ func TestCachedArtifactIsDelivered(t *testing.T) {
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(ap.HandleArtifactRequest)
+	handler := http.HandlerFunc(HandleArtifactRequest)
 	expectedBody := "This is a test file"
 
 	// when
@@ -151,10 +149,10 @@ func TestCacheMissDownloadsFileFromRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	responseRecorder := httptest.NewRecorder()
-	handler := http.HandlerFunc(ap.HandleArtifactRequest)
+	handler := http.HandlerFunc(HandleArtifactRequest)
 	expectedBody := "This is a recovered file"
 
-	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.recovered.jar", ap.CachePath))
+	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.recovered.jar", cachePath))
 
 	// when
 	handler.ServeHTTP(responseRecorder, req)
@@ -164,7 +162,7 @@ func TestCacheMissDownloadsFileFromRepository(t *testing.T) {
 	assert.Equal(t, expectedBody, responseRecorder.Body.String(), "handler returned unexpected body")
 
 	// and
-	assert.FileExists(t, fmt.Sprintf("%s/com.voovoo.recovered.jar", ap.CachePath))
+	assert.FileExists(t, fmt.Sprintf("%s/com.voovoo.recovered.jar", cachePath))
 }
 
 func TestUnknownFile(t *testing.T) {
@@ -174,10 +172,10 @@ func TestUnknownFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	responseRecorder := httptest.NewRecorder()
-	handler := http.HandlerFunc(ap.HandleArtifactRequest)
+	handler := http.HandlerFunc(HandleArtifactRequest)
 	expectedBody := "404 page not found\n"
 
-	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.unknown.jar", ap.CachePath))
+	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.unknown.jar", cachePath))
 
 	// when
 	handler.ServeHTTP(responseRecorder, req)
@@ -187,5 +185,5 @@ func TestUnknownFile(t *testing.T) {
 	assert.Equal(t, expectedBody, responseRecorder.Body.String(), "handler returned unexpected body")
 
 	// and
-	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.unknown.jar", ap.CachePath))
+	assert.NoFileExists(t, fmt.Sprintf("%s/com.voovoo.unknown.jar", cachePath))
 }

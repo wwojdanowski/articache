@@ -10,12 +10,12 @@ import (
 	"path"
 )
 
-type FileRequestHandler struct {
-	cachePath string
-}
+var cachePath string
+var queue chan artifactPath
+var httpClient *http.Client
 
-func (ap *ArtifactProvider) findRequestedFile(file string) (string, bool) {
-	fullPath := fmt.Sprintf("%s/%s", ap.CachePath, file)
+func findRequestedFile(file string) (string, bool) {
+	fullPath := fmt.Sprintf("%s/%s", cachePath, file)
 	if _, err := os.Stat(fullPath); err == nil {
 		return fullPath, true
 	}
@@ -23,12 +23,41 @@ func (ap *ArtifactProvider) findRequestedFile(file string) (string, bool) {
 
 }
 
-type ArtifactProvider struct {
-	CachePath  string
-	HttpClient *http.Client
+func download(ap artifactPath) {
+	url := fmt.Sprintf("%s%s", ap.repository, ap.name)
+	resp, err := httpClient.Get(url)
+	if err == nil {
+		filePath := fmt.Sprintf("%s%s", cachePath, ap.name)
+		tmpFilePath := fmt.Sprintf("%s.tmp", filePath)
+		os.MkdirAll(path.Dir(tmpFilePath), 0750)
+		out, _ := os.Create(tmpFilePath)
+		defer out.Close()
+		io.Copy(out, resp.Body)
+		os.Rename(tmpFilePath, filePath)
+		log.Printf("Successfully downloaded %s\n", url)
+	} else {
+		log.Printf("Issue when downloading %s, error: %s\n", url, err)
+
+	}
+	defer resp.Body.Close()
 }
 
-func (ap *ArtifactProvider) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
+type artifactPath struct {
+	name       string
+	repository string
+}
+
+func downloadLoop(count int, queue <-chan artifactPath) {
+	for i := 0; i < count; i++ {
+		go func() {
+			for val := range queue {
+				download(val)
+			}
+		}()
+	}
+}
+
+func HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 	u, err := url.Parse(r.URL.Path)
 	if err != nil {
 		panic(err)
@@ -36,28 +65,14 @@ func (ap *ArtifactProvider) HandleArtifactRequest(w http.ResponseWriter, r *http
 	file := u.Path
 	log.Printf("Requesting artifact %s\n", file)
 
-	if filePath, ok := ap.findRequestedFile(file); !ok {
-		alternatePath := fmt.Sprintf("https://repo.maven.apache.org/maven2%s", file)
-
-		resp, err := ap.HttpClient.Get(alternatePath)
-		if err != nil {
-			log.Printf("Couldn't fetch file %s, err=%s", file, err)
-			http.Redirect(w, r, alternatePath, http.StatusSeeOther)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			filePath := fmt.Sprintf("%s/%s", ap.CachePath, file)
-			os.MkdirAll(path.Dir(filePath), 0750)
-			out, _ := os.Create(filePath)
-			defer out.Close()
-			io.Copy(out, resp.Body)
-			http.ServeFile(w, r, filePath)
-		} else {
-			log.Printf("Couldn't fetch file %s", file)
-			http.NotFound(w, r)
-		}
+	if filePath, ok := findRequestedFile(file); !ok {
+		log.Printf("Artifact %s not found in cache\n", file)
+		repo := "https://repo.maven.apache.org/maven2"
+		alternatePath := fmt.Sprintf("%s%s", repo, file)
+		http.Redirect(w, r, alternatePath, http.StatusSeeOther)
+		go func() {
+			queue <- artifactPath{file, repo}
+		}()
 
 	} else {
 		log.Printf("Found local artifact %s\n", file)

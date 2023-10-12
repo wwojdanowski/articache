@@ -6,7 +6,7 @@ COPY . .
 
 RUN go mod download
 
-RUN go build -o /articache cmd/articache/main.go
+RUN go build -o /articache main.go provider.go
 
 FROM alpine:latest
 
