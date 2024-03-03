@@ -10,12 +10,14 @@ import (
 	"path"
 )
 
-var cachePath string
-var queue chan artifactPath
-var httpClient *http.Client
+type Cache struct {
+	cachePath  string
+	queue      chan artifactPath
+	httpClient *http.Client
+}
 
-func findRequestedFile(file string) (string, bool) {
-	fullPath := fmt.Sprintf("%s/%s", cachePath, file)
+func (c *Cache) findRequestedFile(file string) (string, bool) {
+	fullPath := fmt.Sprintf("%s/%s", c.cachePath, file)
 	if _, err := os.Stat(fullPath); err == nil {
 		return fullPath, true
 	}
@@ -23,11 +25,11 @@ func findRequestedFile(file string) (string, bool) {
 
 }
 
-func download(ap artifactPath) {
+func (c *Cache) download(ap artifactPath) {
 	url := fmt.Sprintf("%s%s", ap.repository, ap.name)
-	resp, err := httpClient.Get(url)
+	resp, err := c.httpClient.Get(url)
 	if err == nil {
-		filePath := fmt.Sprintf("%s%s", cachePath, ap.name)
+		filePath := fmt.Sprintf("%s%s", c.cachePath, ap.name)
 		tmpFilePath := fmt.Sprintf("%s.tmp", filePath)
 		os.MkdirAll(path.Dir(tmpFilePath), 0750)
 		out, _ := os.Create(tmpFilePath)
@@ -47,31 +49,48 @@ type artifactPath struct {
 	repository string
 }
 
-func downloadLoop(count int, queue <-chan artifactPath) {
+func (c *Cache) downloadLoop(count int, queue <-chan artifactPath) {
+	mutex := make(chan struct{}, 1)
+	lock := make(map[string]bool)
+
 	for i := 0; i < count; i++ {
 		go func() {
 			for val := range queue {
-				download(val)
+				mutex <- struct{}{}
+				if _, ok := lock[val.name]; ok {
+					<-mutex
+					continue
+				} else {
+					lock[val.name] = true
+					<-mutex
+				}
+
+				c.download(val)
+
+				mutex <- struct{}{}
+				delete(lock, val.name)
+				<-mutex
 			}
 		}()
 	}
 }
 
-func HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
+func (c *Cache) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 	u, err := url.Parse(r.URL.Path)
 	if err != nil {
+		// TODO: shouldn't panic
 		panic(err)
 	}
 	file := u.Path
 	log.Printf("Requesting artifact %s\n", file)
 
-	if filePath, ok := findRequestedFile(file); !ok {
+	if filePath, ok := c.findRequestedFile(file); !ok {
 		log.Printf("Artifact %s not found in cache\n", file)
 		repo := "https://repo.maven.apache.org/maven2"
 		alternatePath := fmt.Sprintf("%s%s", repo, file)
 		http.Redirect(w, r, alternatePath, http.StatusSeeOther)
 		go func() {
-			queue <- artifactPath{file, repo}
+			c.queue <- artifactPath{file, repo}
 		}()
 
 	} else {

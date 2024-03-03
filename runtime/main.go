@@ -9,11 +9,9 @@ import (
 func main() {
 	log.Println("Starting Articache")
 	// TODO: Make cache path configurable
-	cachePath = "/tmp"
-	queue = make(chan artifactPath)
-	httpClient = http.DefaultClient
-	downloadLoop(20, queue)
-	http.HandleFunc("/", HandleArtifactRequest)
+	cache := Cache{"/tmp", make(chan artifactPath), http.DefaultClient}
+	cache.downloadLoop(20, cache.queue)
+	http.HandleFunc("/", cache.HandleArtifactRequest)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
