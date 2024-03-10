@@ -52,6 +52,31 @@ func teardownSuite(t *testing.T, dir string) {
 	teardown(dir)
 }
 
+type fakeMavenRepo struct {
+	server *http.Server
+	url    string
+}
+
+func setupFakeMavenRepo() fakeMavenRepo {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/maven2/", func(rw http.ResponseWriter, r *http.Request) {
+		rw.Write([]byte{0, 0, 0, 0})
+		rw.WriteHeader(http.StatusOK)
+	})
+	server := &http.Server{Addr: ":8081", Handler: mux}
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.Printf("Httpserver: ListenAndServe() error: %s", err)
+		}
+	}()
+
+	return fakeMavenRepo{server, "http://127.0.0.1:8081/maven2"}
+}
+
+func teardownFakeMavenRepo(repo fakeMavenRepo) {
+	repo.server.Close()
+}
+
 func TestRedirect(t *testing.T) {
 
 	// setup http server
@@ -60,19 +85,13 @@ func TestRedirect(t *testing.T) {
 		rw.Write([]byte{0, 0, 0, 0})
 		rw.WriteHeader(http.StatusOK)
 	})
-	server := &http.Server{Addr: ":8081", Handler: mux}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.Printf("Httpserver: ListenAndServe() error: %s", err)
-		}
-	}()
+	repo := setupFakeMavenRepo()
+	defer teardownFakeMavenRepo(repo)
 
 	rootDir := setupSuite(t)
 	defer teardownSuite(t, rootDir)
-	repo := "http://127.0.0.1:8081/maven2"
 
-	cache := provider.NewCache(rootDir, repo)
+	cache := provider.NewCache(rootDir, repo.url)
 	cache.Start(20)
 	artifacts := []string{"/com.voovoo.lib.jar", "/com.booboo.lib.jar", "/com.noonoo.lib.jar"}
 
@@ -91,7 +110,6 @@ func TestRedirect(t *testing.T) {
 		file := fmt.Sprintf("%s%s", rootDir, artifacts[i])
 		assert.FileExists(t, file)
 	}
-	server.Close()
 }
 
 // func TestCachedArtifactIsDelivered(t *testing.T) {

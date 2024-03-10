@@ -111,7 +111,6 @@ func (c *Cache) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 
 	if filePath, ok := c.findRequestedFile(file); !ok {
 		log.Printf("Artifact %s not found in cache\n", file)
-		// repo := "https://repo.maven.apache.org/maven2"
 		repo := c.mainRepo
 		alternatePath := fmt.Sprintf("%s%s", repo, file)
 		http.Redirect(w, r, alternatePath, http.StatusSeeOther)
