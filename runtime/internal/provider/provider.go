@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"fmt"
@@ -10,10 +10,27 @@ import (
 	"path"
 )
 
+type Downloader interface {
+	Download(string, artifactPath)
+}
+
+type HTTPDownloader struct {
+	httpClient *http.Client
+}
+
 type Cache struct {
 	cachePath  string
 	queue      chan artifactPath
-	httpClient *http.Client
+	downloader Downloader
+	mainRepo   string
+}
+
+func NewCache(path string, mainRepo string) *Cache {
+	return &Cache{path, make(chan artifactPath), &HTTPDownloader{http.DefaultClient}, mainRepo}
+}
+
+func (c *Cache) Start(routines int) {
+	c.downloadLoop(routines, c.queue)
 }
 
 func (c *Cache) findRequestedFile(file string) (string, bool) {
@@ -25,11 +42,17 @@ func (c *Cache) findRequestedFile(file string) (string, bool) {
 
 }
 
-func (c *Cache) download(ap artifactPath) {
+func (d *HTTPDownloader) Download(rootPath string, ap artifactPath) {
 	url := fmt.Sprintf("%s%s", ap.repository, ap.name)
-	resp, err := c.httpClient.Get(url)
-	if err == nil {
-		filePath := fmt.Sprintf("%s%s", c.cachePath, ap.name)
+	if resp, err := d.httpClient.Get(url); err == nil {
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			log.Printf("Unable to download %s, status: %d", ap.name, resp.StatusCode)
+			return
+		}
+
+		filePath := fmt.Sprintf("%s%s", rootPath, ap.name)
 		tmpFilePath := fmt.Sprintf("%s.tmp", filePath)
 		os.MkdirAll(path.Dir(tmpFilePath), 0750)
 		out, _ := os.Create(tmpFilePath)
@@ -39,9 +62,11 @@ func (c *Cache) download(ap artifactPath) {
 		log.Printf("Successfully downloaded %s\n", url)
 	} else {
 		log.Printf("Issue when downloading %s, error: %s\n", url, err)
-
 	}
-	defer resp.Body.Close()
+}
+
+func (c *Cache) download(ap artifactPath) {
+	c.downloader.Download(c.cachePath, ap)
 }
 
 type artifactPath struct {
@@ -86,7 +111,8 @@ func (c *Cache) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 
 	if filePath, ok := c.findRequestedFile(file); !ok {
 		log.Printf("Artifact %s not found in cache\n", file)
-		repo := "https://repo.maven.apache.org/maven2"
+		// repo := "https://repo.maven.apache.org/maven2"
+		repo := c.mainRepo
 		alternatePath := fmt.Sprintf("%s%s", repo, file)
 		http.Redirect(w, r, alternatePath, http.StatusSeeOther)
 		go func() {
