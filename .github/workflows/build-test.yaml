@@ -1,0 +1,98 @@
+---
+    name: Manual Build & Test & Publish
+    
+    on:
+      workflow_dispatch:
+        inputs:
+          release_tag:
+            description: |
+              'Version to manually release'
+            required: true
+            type: string
+      workflow_call:
+        inputs:
+          release_tag:
+            description: |
+              'Version to manually release'
+            required: true
+            type: string
+    
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
+      cancel-in-progress: true
+    
+    permissions:
+      contents: write  # required to checkout the code from the repo and to perform release
+      packages: write  # required to publish to packages
+      pull-requests: write
+    
+    env:
+      TAG_RULES: |
+        type=raw,value=latest
+        type=sha
+        type=sha,format=long
+        type=semver,pattern={{version}},value=${{ inputs.release_tag }}
+    
+    jobs:
+    
+      vars:
+        runs-on: ubuntu-22.04
+        outputs:
+          tag_rules: ${{ env.TAG_RULES }}
+        steps:
+          - run: echo "Exposing env vars"
+    
+      articache:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+        - uses: actions/setup-go@v4
+          with:
+              go-version: 'stable'
+            
+        - name: Build
+          id: dnb-build
+          run: go mod tidy
+    
+        - name: Dual-N-Back test
+          id: dnb-test
+          run: go test -timeout 30s -v `go list ./... | grep -v _test`
+      
+    #   flight-docker:
+    #     permissions:
+    #       contents: read
+    #       packages: write # needed to push docker image to ghcr.io
+    #       pull-requests: write
+    #     uses: asmaestro/actions/.github/workflows/docker-build-push.yaml@solution-docker
+    #     needs: [vars]
+    #     with:
+    #       name: Flight
+    #       push: true
+    #       file: 'src/Services/Flight/Dockerfile'
+    #       context: .
+    #       image-names: "ghcr.io/${{ github.repository }}-flight"
+    #       tag-rules: ${{ needs.vars.outputs.tag_rules }}
+    
+
+    
+      release-update:
+        runs-on: ubuntu-latest
+        if: success()
+        needs: [flight-docker, identity-docker, passenger-docker, booking-docker]
+        steps:
+          - name: Release Update - ${{ inputs.release_tag }}
+            uses: softprops/action-gh-release@v1
+            env:
+              REGISTRY: ghcr.io
+            with:
+              tag_name: "v${{ inputs.release_tag }}"
+              append_body: true
+              body: |
+                - GitHub Packages Container URLs: 
+                  - ${{ env.REGISTRY }}/${{ github.repository }}-flight:${{ inputs.release_tag }}
+                  - ${{ env.REGISTRY }}/${{ github.repository }}-identity:${{ inputs.release_tag }}
+                  - ${{ env.REGISTRY }}/${{ github.repository }}-passenger:${{ inputs.release_tag }}
+                  - ${{ env.REGISTRY }}/${{ github.repository }}-booking:${{ inputs.release_tag }}
+              token: ${{ secrets.GITHUB_TOKEN }}
+    
