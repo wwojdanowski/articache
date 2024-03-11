@@ -97,7 +97,9 @@ func TestRedirect(t *testing.T) {
 
 	http.HandleFunc("/", cache.HandleArtifactRequest)
 	go func() {
-		http.ListenAndServe(":8080", nil)
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Printf("Failed to start cache server")
+		}
 	}()
 
 	for i := range artifacts {
