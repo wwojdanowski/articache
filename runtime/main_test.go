@@ -102,9 +102,14 @@ func TestRedirect(t *testing.T) {
 		}
 	}()
 
+	time.Sleep(time.Second * 2)
+
 	for i := range artifacts {
-		response, _ := http.Get(fmt.Sprintf("http://127.0.0.1:8080%s", artifacts[i]))
-		assert.Equal(t, http.StatusOK, response.StatusCode)
+		if response, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080%s", artifacts[i])); err == nil {
+			assert.Equal(t, http.StatusOK, response.StatusCode)
+		} else {
+			assert.Fail(t, fmt.Sprintf("An error occured: %s", err))
+		}
 	}
 
 	time.Sleep(time.Second)
