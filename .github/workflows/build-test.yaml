@@ -71,7 +71,7 @@
         with:
           name: Flight
           push: true
-          file: 'Dockerfile'
+          file: runtime/Dockerfile
           context: runtime
           image-names: "ghcr.io/${{ github.repository }}-articache"
           tag-rules: ${{ needs.vars.outputs.tag_rules }}
