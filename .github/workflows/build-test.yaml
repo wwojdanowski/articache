@@ -65,6 +65,7 @@
         permissions:
           contents: read
           packages: write
+          pull-requests: write
         uses: asmaestro/actions/.github/workflows/docker-build-push.yaml@solution-docker
         needs: [vars]
         with:
