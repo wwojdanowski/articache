@@ -34,7 +34,6 @@
         type=semver,pattern={{version}},value=${{ inputs.release_tag }}
     
     jobs:
-    
       vars:
         runs-on: ubuntu-22.04
         outputs:
@@ -62,20 +61,19 @@
           id: dnb-test
           run: go test -timeout 30s -v `go list ./... | grep -v _test`
       
-    #   flight-docker:
-    #     permissions:
-    #       contents: read
-    #       packages: write # needed to push docker image to ghcr.io
-    #       pull-requests: write
-    #     uses: asmaestro/actions/.github/workflows/docker-build-push.yaml@solution-docker
-    #     needs: [vars]
-    #     with:
-    #       name: Flight
-    #       push: true
-    #       file: 'src/Services/Flight/Dockerfile'
-    #       context: .
-    #       image-names: "ghcr.io/${{ github.repository }}-flight"
-    #       tag-rules: ${{ needs.vars.outputs.tag_rules }}
+      articache-docker:
+        permissions:
+          contents: read
+          packages: write
+        uses: asmaestro/actions/.github/workflows/docker-build-push.yaml@solution-docker
+        needs: [vars]
+        with:
+          name: Flight
+          push: true
+          file: 'Dockerfile'
+          context: runtime
+          image-names: "ghcr.io/${{ github.repository }}-articache"
+          tag-rules: ${{ needs.vars.outputs.tag_rules }}
     
 
     
