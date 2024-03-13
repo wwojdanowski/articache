@@ -5,10 +5,10 @@
 replicaCount: 1
 
 image:
-  repository: articache
+  repository: ghcr.io/wwojdanowski/articache-articache
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest"
+  tag: sha-24c2614831eef5cfd7c971c5e14ac4ab05c19917
 
 imagePullSecrets: []
 nameOverride: ""
