@@ -29,6 +29,8 @@
             uses: actions/checkout@v4
           - name: release chart
             uses: helm/chart-releaser-action@v1.6.0
+            with:
+              charts_dir: helm
             env:
               CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
