@@ -29,7 +29,7 @@
           - name: release chart
             uses: helm/chart-releaser-action@v1.6.0
             with:
-              charts_dir: helm
+              charts_dir: charts
               packages_with_index: true
             env:
               CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
