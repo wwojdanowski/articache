@@ -30,7 +30,7 @@
             uses: helm/chart-releaser-action@v1.6.0
             with:
               charts_dir: helm
-              packages_with_index: true
+              # packages_with_index: true
             env:
               CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
