@@ -208,13 +208,17 @@ func (c *Cache) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 			metrics.DownloadQueueDepth.Set(float64(len(c.queue)))
 			slog.Warn("download queue full; skipping async download", "artifact", file)
 		}
-		slog.Info("artifact request", "result", "miss", "path", file, "status", http.StatusSeeOther, "remote_addr", r.RemoteAddr, "duration_ms", time.Since(start).Milliseconds())
+		slog.Info("artifact request", "result", "miss", "path", file, "status",
+			http.StatusSeeOther, "remote_addr", r.RemoteAddr, "duration_ms",
+			time.Since(start).Milliseconds())
 
 	} else {
 		metrics.HTTPRequestsTotal.WithLabelValues("hit").Inc()
 		metrics.CacheHitsTotal.Inc()
 		http.ServeFile(w, r, filePath)
-		slog.Info("artifact request", "result", "hit", "path", file, "status", http.StatusOK, "remote_addr", r.RemoteAddr, "duration_ms", time.Since(start).Milliseconds())
+		slog.Info("artifact request", "result", "hit", "path", file, "status",
+			http.StatusOK, "remote_addr", r.RemoteAddr, "duration_ms",
+			time.Since(start).Milliseconds())
 	}
 
 }

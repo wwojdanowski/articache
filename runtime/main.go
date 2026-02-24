@@ -1,11 +1,12 @@
 package main
 
 import (
+	"articache/internal/logging"
 	"articache/internal/metrics"
 	"articache/internal/provider"
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,12 +18,25 @@ import (
 )
 
 func main() {
-	log.Println("Starting Articache")
 	addrPtr := flag.String("addr", ":8080", "HTTP listen address.")
 	pathPtr := flag.String("path", "/tmp/articache_data", "Cache path.")
 	repoPtr := flag.String("repo", "https://repo.maven.apache.org/maven2", "Main remote repository.")
 	workersPtr := flag.Int("workers", 20, "Number of background download workers.")
+	logLevelPtr := flag.String("log-level", "info", "Log level: debug, info, warn, error.")
+	logFormatPtr := flag.String("log-format", "json", "Log format: json or text.")
 	flag.Parse()
+
+	if err := logging.Init(*logLevelPtr, *logFormatPtr); err != nil {
+		slog.Error("invalid logging configuration", "error", err)
+		os.Exit(2)
+	}
+
+	slog.Info("starting articache",
+		"addr", *addrPtr,
+		"cache_path", *pathPtr,
+		"repo", *repoPtr,
+		"workers", *workersPtr,
+	)
 
 	cache := provider.NewCache(*pathPtr, *repoPtr)
 	cache.Start(*workersPtr)
@@ -51,8 +65,9 @@ func main() {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("Listening on %s", server.Addr)
+	slog.Info("http server listening", "addr", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("HTTP server failed: %v", err)
+		slog.Error("http server failed", "error", err)
+		os.Exit(1)
 	}
 }
