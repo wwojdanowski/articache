@@ -1,0 +1,39 @@
+# OS / filesystem junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Go build artifacts
+bin/
+dist/
+*.test
+*.out
+*.prof
+coverage.out
+cover.out
+
+# Local binaries produced in this repo
+runtime/articache
+runtime/main
+
+# Local caches / temp dirs
+.cache/
+tmp/
+
+# Helm dependency archives
+charts/**/*.tgz
+
