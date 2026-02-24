@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"articache/internal/metrics"
 )
 
 type Downloader interface {
@@ -131,14 +133,20 @@ func (d *HTTPDownloader) Download(ctx context.Context, rootPath string, ap artif
 		return fmt.Errorf("rename %q -> %q: %w", tmpName, filePath, err)
 	}
 
-	log.Printf("Successfully downloaded %s", downloadURL)
+	slog.Info("artifact downloaded", "url", downloadURL)
 	return nil
 }
 
 func (c *Cache) download(ctx context.Context, ap artifactPath) {
+	start := time.Now()
 	if err := c.downloader.Download(ctx, c.cachePath, ap); err != nil {
-		log.Printf("Download failed for %s%s: %v", ap.repository, ap.name, err)
+		metrics.DownloadsTotal.WithLabelValues("failure").Inc()
+		metrics.DownloadDurationSeconds.Observe(time.Since(start).Seconds())
+		slog.Error("artifact download failed", "artifact", ap.name, "repository", ap.repository, "error", err)
+		return
 	}
+	metrics.DownloadsTotal.WithLabelValues("success").Inc()
+	metrics.DownloadDurationSeconds.Observe(time.Since(start).Seconds())
 }
 
 type artifactPath struct {
@@ -153,6 +161,7 @@ func (c *Cache) downloadLoop(count int, queue <-chan artifactPath) {
 	for i := 0; i < count; i++ {
 		go func() {
 			for val := range queue {
+				metrics.DownloadQueueDepth.Set(float64(len(c.queue)))
 				mu.Lock()
 				if _, ok := inflight[val.name]; ok {
 					mu.Unlock()
@@ -161,7 +170,9 @@ func (c *Cache) downloadLoop(count int, queue <-chan artifactPath) {
 				inflight[val.name] = struct{}{}
 				mu.Unlock()
 
+				metrics.DownloadsInflight.Inc()
 				c.download(context.Background(), val)
+				metrics.DownloadsInflight.Dec()
 
 				mu.Lock()
 				delete(inflight, val.name)
@@ -173,27 +184,37 @@ func (c *Cache) downloadLoop(count int, queue <-chan artifactPath) {
 
 func (c *Cache) HandleArtifactRequest(w http.ResponseWriter, r *http.Request) {
 	file := r.URL.Path
-	log.Printf("Requesting artifact %s", file)
+	start := time.Now()
 
 	if _, err := c.cacheFilePath(file); err != nil {
+		metrics.HTTPRequestsTotal.WithLabelValues("bad_request").Inc()
 		http.Error(w, "invalid artifact path", http.StatusBadRequest)
+		slog.Warn("invalid artifact request", "path", file, "remote_addr", r.RemoteAddr, "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
 
 	if filePath, ok := c.findRequestedFile(file); !ok {
-		log.Printf("Artifact %s not found in cache", file)
+		metrics.HTTPRequestsTotal.WithLabelValues("miss").Inc()
+		metrics.CacheMissesTotal.Inc()
 		repo := c.mainRepo
 		alternatePath := repo + file
 		http.Redirect(w, r, alternatePath, http.StatusSeeOther)
 		select {
 		case c.queue <- artifactPath{file, repo}:
+			metrics.DownloadQueuedTotal.Inc()
+			metrics.DownloadQueueDepth.Set(float64(len(c.queue)))
 		default:
-			log.Printf("Download queue full; skipping async download for %s", file)
+			metrics.DownloadQueueDroppedTotal.Inc()
+			metrics.DownloadQueueDepth.Set(float64(len(c.queue)))
+			slog.Warn("download queue full; skipping async download", "artifact", file)
 		}
+		slog.Info("artifact request", "result", "miss", "path", file, "status", http.StatusSeeOther, "remote_addr", r.RemoteAddr, "duration_ms", time.Since(start).Milliseconds())
 
 	} else {
-		log.Printf("Found local artifact %s", file)
+		metrics.HTTPRequestsTotal.WithLabelValues("hit").Inc()
+		metrics.CacheHitsTotal.Inc()
 		http.ServeFile(w, r, filePath)
+		slog.Info("artifact request", "result", "hit", "path", file, "status", http.StatusOK, "remote_addr", r.RemoteAddr, "duration_ms", time.Since(start).Milliseconds())
 	}
 
 }

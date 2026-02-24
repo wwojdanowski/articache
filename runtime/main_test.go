@@ -1,8 +1,10 @@
 package main_test
 
 import (
+	"articache/internal/metrics"
 	"articache/internal/provider"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"testing"
@@ -10,6 +12,8 @@ import (
 
 	"net/http/httptest"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,6 +53,44 @@ func TestRedirect(t *testing.T) {
 		file := fmt.Sprintf("%s%s", rootDir, artifacts[i])
 		assert.FileExists(t, file)
 	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	rootDir := t.TempDir()
+
+	reg := prometheus.NewRegistry()
+	metrics.Register(reg)
+
+	repo := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	}))
+	defer repo.Close()
+
+	cache := provider.NewCache(rootDir, repo.URL+"/maven2")
+	cache.Start(2)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", cache.HandleArtifactRequest)
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// trigger at least one request so our custom metrics are initialized
+	respReq, err := http.Get(srv.URL + "/some-artifact.jar")
+	assert.NoError(t, err)
+	if respReq != nil {
+		respReq.Body.Close()
+	}
+
+	resp, err := http.Get(srv.URL + "/metrics")
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(body), "articache_http_requests_total")
 }
 
 // func TestCachedArtifactIsDelivered(t *testing.T) {

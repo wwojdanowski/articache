@@ -1,6 +1,7 @@
 package main
 
 import (
+	"articache/internal/metrics"
 	"articache/internal/provider"
 	"context"
 	"flag"
@@ -10,6 +11,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -23,9 +27,12 @@ func main() {
 	cache := provider.NewCache(*pathPtr, *repoPtr)
 	cache.Start(*workersPtr)
 
+	metrics.Register(prometheus.DefaultRegisterer)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", cache.HandleArtifactRequest)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
 		Addr:              *addrPtr,
