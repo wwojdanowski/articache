@@ -1,7 +1,8 @@
 package provider
 
 import (
-	"fmt"
+	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,13 +10,16 @@ import (
 )
 
 type MockDownloader struct {
+	mu        sync.Mutex
 	Downloads map[string]int
 }
 
-func (d *MockDownloader) Download(rootPath string, ap artifactPath) {
+func (d *MockDownloader) Download(ctx context.Context, rootPath string, ap artifactPath) error {
+	d.mu.Lock()
 	d.Downloads[ap.name] = d.Downloads[ap.name] + 1
-	fmt.Println(d.Downloads[ap.name])
+	d.mu.Unlock()
 	time.Sleep(time.Second * 3)
+	return nil
 }
 
 func TestDownloadLoopSingleFile(t *testing.T) {
