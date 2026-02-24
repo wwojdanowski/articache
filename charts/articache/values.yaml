@@ -10,7 +10,8 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: sha-24c2614831eef5cfd7c971c5e14ac4ab05c19917
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: ghcr-creds
 nameOverride: ""
 fullnameOverride: ""
 
