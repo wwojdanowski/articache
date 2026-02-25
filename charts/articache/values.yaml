@@ -8,7 +8,7 @@ image:
   repository: ghcr.io/wwojdanowski/articache-articache
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: sha-24c2614831eef5cfd7c971c5e14ac4ab05c19917
+  tag: latest
 
 imagePullSecrets:
   - name: ghcr-creds
@@ -40,6 +40,7 @@ securityContext: {}
 service:
   type: ClusterIP
   port: 8080
+  maintenancePort: 8081
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

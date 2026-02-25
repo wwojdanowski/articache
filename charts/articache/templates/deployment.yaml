@@ -33,18 +33,24 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--addr=:{{ .Values.service.port }}"
+            - "--maintenance-addr=:{{ .Values.service.maintenancePort }}"
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: maintenance
+              containerPort: {{ .Values.service.maintenancePort }}
               protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
-              port: http
+              port: maintenance
           readinessProbe:
             httpGet:
               path: /healthz
-              port: http
+              port: maintenance
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

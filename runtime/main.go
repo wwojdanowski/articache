@@ -18,7 +18,8 @@ import (
 )
 
 func main() {
-	addrPtr := flag.String("addr", ":8080", "HTTP listen address.")
+	addrPtr := flag.String("addr", ":8080", "Artifact HTTP listen address.")
+	maintenanceAddrPtr := flag.String("maintenance-addr", ":8081", "Maintenance HTTP listen address (healthz/metrics).")
 	pathPtr := flag.String("path", "/tmp/articache_data", "Cache path.")
 	repoPtr := flag.String("repo", "https://repo.maven.apache.org/maven2", "Main remote repository.")
 	workersPtr := flag.Int("workers", 20, "Number of background download workers.")
@@ -33,6 +34,7 @@ func main() {
 
 	slog.Info("starting articache",
 		"addr", *addrPtr,
+		"maintenance_addr", *maintenanceAddrPtr,
 		"cache_path", *pathPtr,
 		"repo", *repoPtr,
 		"workers", *workersPtr,
@@ -43,14 +45,22 @@ func main() {
 
 	metrics.Register(prometheus.DefaultRegisterer)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", cache.HandleArtifactRequest)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.Handle("/metrics", promhttp.Handler())
+	artifactMux := http.NewServeMux()
+	artifactMux.HandleFunc("/", cache.HandleArtifactRequest)
 
-	server := &http.Server{
+	maintenanceMux := http.NewServeMux()
+	maintenanceMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	maintenanceMux.Handle("/metrics", promhttp.Handler())
+
+	artifactServer := &http.Server{
 		Addr:              *addrPtr,
-		Handler:           mux,
+		Handler:           artifactMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	maintenanceServer := &http.Server{
+		Addr:              *maintenanceAddrPtr,
+		Handler:           maintenanceMux,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -62,12 +72,35 @@ func main() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		_ = artifactServer.Shutdown(shutdownCtx)
+		_ = maintenanceServer.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("http server listening", "addr", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("http server failed", "error", err)
-		os.Exit(1)
+	errCh := make(chan error, 2)
+
+	go func() {
+		slog.Info("artifact server listening", "addr", artifactServer.Addr)
+		if err := artifactServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	go func() {
+		slog.Info("maintenance server listening", "addr", maintenanceServer.Addr)
+		if err := maintenanceServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			slog.Error("http server failed", "error", err)
+			stop()
+			os.Exit(1)
+		}
 	}
 }
