@@ -41,6 +41,20 @@ service:
   type: ClusterIP
   port: 8080
   maintenancePort: 8081
+  exposeMaintenancePort: false
+
+podMonitor:
+  enabled: true
+  # If empty, PodMonitor is created in the release namespace.
+  namespace: ""
+  # Label used by kube-prometheus-stack Prometheus selector (often "release: kps").
+  prometheusReleaseLabel: "kps"
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics
+  additionalLabels: {}
+  relabelings: []
+  metricRelabelings: []
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
